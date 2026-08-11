@@ -274,7 +274,7 @@ Project management files are checked in:
 - `.clang-format` for Google-style formatting with clang-format 18.
 - `.clang-tidy` for static-analysis defaults.
 - `.editorconfig` for editor consistency.
-- `.github/workflows/build.yml` for CI on push and pull request.
+- `.github/workflows/ci.yml` for CI on push and pull request.
 - `AGENTS.md` for AI coding-agent project guidance.
 
 Format project C++ files with:
@@ -342,6 +342,10 @@ buffer. Completed string replies are moved into the output queue, and the queue
 reuses scatter/gather metadata across partial writes.
 
 ## CI
+
+CI runs for pull requests targeting `main` and for pushes to `main`. A new run
+for the same pull request or branch cancels any older run still in progress,
+avoiding duplicate branch-push runs and work on superseded commits.
 
 GitHub Actions runs debug, release, and ASan/UBSan matrices on macOS and Ubuntu,
 so both event-loop pollers are built and tested. macOS also runs Apple `leaks`;
