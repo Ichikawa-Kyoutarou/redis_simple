@@ -161,9 +161,11 @@ Before committing, run the relevant build and tests.
   explicitly when they do not belong in a library target.
 - Keep event-loop pollers platform-selected in `CMakeLists.txt`: `kqueue` for
   macOS and `epoll` for Linux.
-- Keep `CMakeLists.txt`, `CMakePresets.json`, `.github/workflows/build.yml`,
+- Keep `CMakeLists.txt`, `CMakePresets.json`, `.github/workflows/ci.yml`,
   `.clang-format`, `.clang-tidy`, and `.editorconfig` aligned with project
   conventions.
+- Keep CI branch pushes limited to `main`; validate feature branches through
+  pull requests targeting `main`, and cancel superseded runs for the same ref.
 - Avoid unrelated refactors while making focused changes.
 - Do not reintroduce stale mock targets that are not part of CTest or normal
   project workflows.
