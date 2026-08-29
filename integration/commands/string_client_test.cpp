@@ -54,6 +54,33 @@ int Run() {
       {"GET string_px_key\r\n", "value\n"},
       {"SET string_lowercase_option value px 10000\r\n", "OK\n"},
       {"GET string_lowercase_option\r\n", "value\n"},
+      {"SET string_nx_key first NX\r\n", "OK\n"},
+      {"SET string_nx_key second NX\r\n", "(nil)\n"},
+      {"GET string_nx_key\r\n", "first\n"},
+      {"SET string_xx_missing value XX\r\n", "(nil)\n"},
+      {"GET string_xx_missing\r\n", "(nil)\n"},
+      {"SET string_xx_key first\r\n", "OK\n"},
+      {"SET string_xx_key second XX\r\n", "OK\n"},
+      {"GET string_xx_key\r\n", "second\n"},
+      {"SET string_get_key first\r\n", "OK\n"},
+      {"SET string_get_key second GET\r\n", "first\n"},
+      {"GET string_get_key\r\n", "second\n"},
+      {"SET string_get_missing first GET\r\n", "(nil)\n"},
+      {"GET string_get_missing\r\n", "first\n"},
+      {"SET string_get_nx existing\r\n", "OK\n"},
+      {"SET string_get_nx ignored GET NX\r\n", "existing\n"},
+      {"GET string_get_nx\r\n", "existing\n"},
+      {"SET string_get_xx_missing ignored XX GET\r\n", "(nil)\n"},
+      {"GET string_get_xx_missing\r\n", "(nil)\n"},
+      {"SET string_conflict original\r\n", "OK\n"},
+      {"SET string_conflict changed NX XX\r\n", "ERR syntax error\n"},
+      {"GET string_conflict\r\n", "original\n"},
+      {"SET string_conflict changed GET GET\r\n", "ERR syntax error\n"},
+      {"GET string_conflict\r\n", "original\n"},
+      {"SADD string_get_wrong_type member\r\n", "1\n"},
+      {"SET string_get_wrong_type value NX GET\r\n",
+       "WRONGTYPE Operation against a key holding the wrong kind of value\n"},
+      {"TYPE string_get_wrong_type\r\n", "set\n"},
       {"INCR string_counter\r\n", "1\n"},
       {"INCR string_counter\r\n", "2\n"},
       {"DECR string_counter\r\n", "1\n"},
@@ -82,6 +109,16 @@ int Run() {
   }
   cli.AddCommand(std::vector<std::string_view>{"GET", "key with spaces"});
   if (cli.ReadReply() != "value with spaces\n") {
+    return EXIT_FAILURE;
+  }
+  cli.AddCommand(std::vector<std::string_view>{"HELLO", "3"});
+  if (cli.ReadReply().find("proto\n3\n") == std::string::npos) {
+    return EXIT_FAILURE;
+  }
+  if (!ExpectReply(&cli, {"SET string_resp3 value NX\r\n", "OK\n"}) ||
+      !ExpectReply(&cli, {"SET string_resp3 ignored NX\r\n", "(nil)\n"}) ||
+      !ExpectReply(
+          &cli, {"SET string_resp3_missing ignored XX GET\r\n", "(nil)\n"})) {
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;

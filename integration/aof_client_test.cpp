@@ -50,6 +50,9 @@ bool WriteDataset(cli::RedisCli* const cli) {
       {"SET aof_flushed gone\r\n", "OK\n"},
       {"FLUSHDB\r\n", "OK\n"},
       {"SET aof_string value\r\n", "OK\n"},
+      {"SET aof_conditional initial NX\r\n", "OK\n"},
+      {"SET aof_conditional ignored NX\r\n", "(nil)\n"},
+      {"SET aof_conditional updated XX GET\r\n", "initial\n"},
       {"SET aof_ttl live PX 60000\r\n", "OK\n"},
       {"SET aof_persist durable PX 60000\r\n", "OK\n"},
       {"PERSIST aof_persist\r\n", "1\n"},
@@ -111,6 +114,7 @@ bool RewriteDataset(cli::RedisCli* const cli) {
 bool ReadDataset(cli::RedisCli* const cli) {
   const std::vector<Case> cases = {
       {"GET aof_string\r\n", "updated\n"},
+      {"GET aof_conditional\r\n", "updated\n"},
       {"GET aof_expired\r\n", "(nil)\n"},
       {"GET aof_flushed\r\n", "(nil)\n"},
       {"GET aof_persist\r\n", "durable\n"},

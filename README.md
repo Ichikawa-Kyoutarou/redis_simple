@@ -96,8 +96,8 @@ including protocol errors such as `ERR wrong number of arguments` and
 - Keys: `DEL`, `UNLINK`, `EXISTS`, `TYPE`, `EXPIRE`, `PEXPIRE`, `PEXPIREAT`,
   `TTL`, `PTTL`, `PERSIST`, `RENAME`, `DBSIZE`, `FLUSHDB`, `SCAN` with `MATCH`
   and `COUNT`
-- Strings: `GET`, `SET` with `EX`, `PX`, and `KEEPTTL`, `INCR`, `DECR`,
-  `APPEND`, `MGET`, `MSET`
+- Strings: `GET`, `SET` with `NX`, `XX`, `GET`, `EX`, `PX`, and `KEEPTTL`,
+  `INCR`, `DECR`, `APPEND`, `MGET`, `MSET`
 - Lists: `LPUSH`, `RPUSH`, `LPOP`, `RPOP`, `LLEN`, `LRANGE`, `LINDEX`, `LSET`,
   `LREM`, `LTRIM`
 - Sets: `SADD`, `SCARD`, `SREM`, `SMEMBERS`, `SISMEMBER`, `SINTER`, `SUNION`,

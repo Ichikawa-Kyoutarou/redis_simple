@@ -1,6 +1,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -20,7 +22,19 @@ int ParseSetOption(const CommandArgs& args, size_t* idx,
                    StringArgs* string_args);
 bool ExpireAtFromTtl(int64_t ttl, int64_t multiplier, int64_t now,
                      int64_t* expire);
-int Set(db::RedisDb* redis_db, const StringArgs* args);
+enum class SetStatus : uint8_t {
+  kSet,
+  kNotSet,
+  kWrongType,
+  kError,
+};
+
+struct SetResult {
+  SetStatus status{SetStatus::kError};
+  std::optional<std::string> old_value;
+};
+
+SetResult Set(db::RedisDb* redis_db, const StringArgs& args);
 }  // namespace
 
 void HandleSet(Client* const client) {
@@ -32,12 +46,29 @@ void HandleSet(Client* const client) {
   }
 
   if (auto* redis_db = client->Db()) {
-    if (Set(redis_db, &args) < 0) {
+    SetResult result = Set(redis_db, args);
+    if (result.status == SetStatus::kWrongType) {
+      client->AddReply(reply::WrongTypeError());
+      return;
+    }
+    if (result.status == SetStatus::kError) {
       client->AddReply(reply::FromError("ERR failed to set key"));
       return;
     }
+    if (result.status == SetStatus::kNotSet) {
+      client->AddReply(result.old_value.has_value()
+                           ? reply::FromBulkString(*result.old_value)
+                           : reply::Null(client->Protocol()));
+      return;
+    }
     client->MarkModified();
-    client->AddReply(reply::FromString("OK"));
+    if (!args.return_old_value) {
+      client->AddReply(reply::FromString("OK"));
+    } else if (result.old_value.has_value()) {
+      client->AddReply(reply::FromBulkString(*result.old_value));
+    } else {
+      client->AddReply(reply::Null(client->Protocol()));
+    }
   } else {
     RS_LOG_DEBUG("db unavailable\n");
     client->AddReply(reply::FromError("ERR db unavailable"));
@@ -55,6 +86,8 @@ int ParseArgs(const CommandArgs& args, StringArgs* string_args) {
   string_args->value = args[1];
   string_args->expire = 0;
   string_args->flags = 0;
+  string_args->condition = SetCondition::kNone;
+  string_args->return_old_value = false;
   for (size_t i = 2; i < args.size();) {
     if (ParseSetOption(args, &i, string_args) < 0) {
       return -1;
@@ -66,8 +99,28 @@ int ParseArgs(const CommandArgs& args, StringArgs* string_args) {
 int ParseSetOption(const CommandArgs& args, size_t* const idx,
                    StringArgs* const string_args) {
   const std::string_view option = args[*idx];
+  const bool if_missing = utils::EqualsIgnoreCase(option, "NX");
+  const bool if_exists = utils::EqualsIgnoreCase(option, "XX");
+  if (if_missing || if_exists) {
+    if (string_args->condition != SetCondition::kNone) {
+      return -1;
+    }
+    string_args->condition =
+        if_missing ? SetCondition::kIfMissing : SetCondition::kIfExists;
+    ++(*idx);
+    return 0;
+  }
+  if (utils::EqualsIgnoreCase(option, "GET")) {
+    if (string_args->return_old_value) {
+      return -1;
+    }
+    string_args->return_old_value = true;
+    ++(*idx);
+    return 0;
+  }
   if (utils::EqualsIgnoreCase(option, "KEEPTTL")) {
-    if (string_args->expire > 0) {
+    if (string_args->expire > 0 ||
+        db::HasFlag(string_args->flags, db::SetKeyFlag::kKeepTtl)) {
       return -1;
     }
     string_args->flags |= db::ToInt(db::SetKeyFlag::kKeepTtl);
@@ -113,11 +166,27 @@ bool ExpireAtFromTtl(int64_t ttl, int64_t multiplier, int64_t now,
   return true;
 }
 
-int Set(db::RedisDb* redis_db, const StringArgs* args) {
-  auto value = db::RedisObject::CreateWithString(std::string(args->value));
+SetResult Set(db::RedisDb* redis_db, const StringArgs& args) {
+  const db::RedisObject* const existing = redis_db->LookupKey(args.key);
+  std::optional<std::string> old_value;
+  if (args.return_old_value && existing != nullptr) {
+    if (existing->Type() != db::RedisObject::ObjectType::kString) {
+      return {SetStatus::kWrongType, std::nullopt};
+    }
+    old_value = existing->String();
+  }
+
+  const bool exists = existing != nullptr;
+  if ((args.condition == SetCondition::kIfMissing && exists) ||
+      (args.condition == SetCondition::kIfExists && !exists)) {
+    return {SetStatus::kNotSet, std::move(old_value)};
+  }
+
+  auto value = db::RedisObject::CreateWithString(std::string(args.value));
   const auto status =
-      redis_db->SetKey(args->key, std::move(value), args->expire, args->flags);
-  return status == db::DbStatus::kError ? -1 : 0;
+      redis_db->SetKey(args.key, std::move(value), args.expire, args.flags);
+  return {status == db::DbStatus::kError ? SetStatus::kError : SetStatus::kSet,
+          std::move(old_value)};
 }
 }  // namespace
 }  // namespace redis_simple::command::strings
