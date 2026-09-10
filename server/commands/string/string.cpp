@@ -22,6 +22,11 @@ enum class StringStatus : std::uint8_t {
   kError,
 };
 
+enum class IntegerOperation : std::uint8_t {
+  kAdd,
+  kSubtract,
+};
+
 struct StringResult {
   const std::string* value;
   StringStatus status;
@@ -45,31 +50,36 @@ std::optional<int64_t> ToReplyInteger(size_t value) {
   return static_cast<int64_t>(value);
 }
 
-int64_t IncrementValue(int64_t value, int64_t increment, bool* ok) {
-  if ((increment > 0 &&
-       value > std::numeric_limits<int64_t>::max() - increment) ||
-      (increment < 0 &&
-       value < std::numeric_limits<int64_t>::min() - increment)) {
-    *ok = false;
-    return 0;
+bool ApplyIntegerOperation(int64_t value, int64_t operand,
+                           IntegerOperation operation, int64_t* result) {
+  if (operation == IntegerOperation::kAdd) {
+    if ((operand > 0 &&
+         value > std::numeric_limits<int64_t>::max() - operand) ||
+        (operand < 0 &&
+         value < std::numeric_limits<int64_t>::min() - operand)) {
+      return false;
+    }
+    *result = value + operand;
+    return true;
   }
-  *ok = true;
-  return value + increment;
+
+  if ((operand > 0 && value < std::numeric_limits<int64_t>::min() + operand) ||
+      (operand < 0 && value > std::numeric_limits<int64_t>::max() + operand)) {
+    return false;
+  }
+  *result = value - operand;
+  return true;
 }
 
-void HandleIncrement(Client* const client, int64_t increment) {
-  const auto& args = client->Args();
-  if (args.size() != 1) {
-    client->AddReply(reply::WrongNumberOfArguments());
-    return;
-  }
+void UpdateInteger(Client* const client, std::string_view key, int64_t operand,
+                   IntegerOperation operation) {
   auto* redis_db = client->Db();
   if (redis_db == nullptr) {
     client->AddReply(reply::FromError("ERR db unavailable"));
     return;
   }
 
-  auto* object = redis_db->MutableLookupKey(args[0]);
+  auto* object = redis_db->MutableLookupKey(key);
   if (object != nullptr &&
       object->Type() != db::RedisObject::ObjectType::kString) {
     client->AddReply(reply::WrongTypeError());
@@ -80,9 +90,8 @@ void HandleIncrement(Client* const client, int64_t increment) {
     client->AddReply(reply::FromError("ERR value is not an integer"));
     return;
   }
-  bool ok = false;
-  const int64_t next = IncrementValue(value, increment, &ok);
-  if (!ok) {
+  int64_t next = 0;
+  if (!ApplyIntegerOperation(value, operand, operation, &next)) {
     client->AddReply(
         reply::FromError("ERR increment or decrement would overflow"));
     return;
@@ -91,8 +100,7 @@ void HandleIncrement(Client* const client, int64_t increment) {
   if (object != nullptr) {
     *object->MutableString() = std::move(next_value);
   } else if (redis_db->SetKey(
-                 args[0],
-                 db::RedisObject::CreateWithString(std::move(next_value)),
+                 key, db::RedisObject::CreateWithString(std::move(next_value)),
                  0) == db::DbStatus::kError) {
     client->AddReply(reply::FromError("ERR failed to set key"));
     return;
@@ -100,11 +108,46 @@ void HandleIncrement(Client* const client, int64_t increment) {
   client->MarkModified();
   client->AddReply(reply::FromInt64(next));
 }
+
+void HandleIncrement(Client* const client, IntegerOperation operation) {
+  const auto& args = client->Args();
+  if (args.size() != 1) {
+    client->AddReply(reply::WrongNumberOfArguments());
+    return;
+  }
+  UpdateInteger(client, args[0], 1, operation);
+}
+
+void HandleIncrementBy(Client* const client, IntegerOperation operation) {
+  const auto& args = client->Args();
+  if (args.size() != 2) {
+    client->AddReply(reply::WrongNumberOfArguments());
+    return;
+  }
+  int64_t operand = 0;
+  if (!utils::ToInt64(args[1], &operand)) {
+    client->AddReply(reply::FromError("ERR value is not an integer"));
+    return;
+  }
+  UpdateInteger(client, args[0], operand, operation);
+}
 }  // namespace
 
-void HandleIncr(Client* const client) { HandleIncrement(client, 1); }
+void HandleIncr(Client* const client) {
+  HandleIncrement(client, IntegerOperation::kAdd);
+}
 
-void HandleDecr(Client* const client) { HandleIncrement(client, -1); }
+void HandleDecr(Client* const client) {
+  HandleIncrement(client, IntegerOperation::kSubtract);
+}
+
+void HandleIncrBy(Client* const client) {
+  HandleIncrementBy(client, IntegerOperation::kAdd);
+}
+
+void HandleDecrBy(Client* const client) {
+  HandleIncrementBy(client, IntegerOperation::kSubtract);
+}
 
 void HandleAppend(Client* const client) {
   const auto& args = client->Args();
@@ -146,6 +189,32 @@ void HandleAppend(Client* const client) {
   value->append(value_to_append);
   client->MarkModified();
   const auto length = ToReplyInteger(value->size());
+  client->AddReply(length.has_value()
+                       ? reply::FromInt64(*length)
+                       : reply::FromError("ERR string length out of range"));
+}
+
+void HandleStrLen(Client* const client) {
+  const auto& args = client->Args();
+  if (args.size() != 1) {
+    client->AddReply(reply::WrongNumberOfArguments());
+    return;
+  }
+  auto* redis_db = client->Db();
+  if (redis_db == nullptr) {
+    client->AddReply(reply::FromError("ERR db unavailable"));
+    return;
+  }
+  const auto result = LookupString(redis_db, args[0]);
+  if (result.status == StringStatus::kWrongType) {
+    client->AddReply(reply::WrongTypeError());
+    return;
+  }
+  if (result.status == StringStatus::kMissing) {
+    client->AddReply(reply::FromInt64(0));
+    return;
+  }
+  const auto length = ToReplyInteger(result.value->size());
   client->AddReply(length.has_value()
                        ? reply::FromInt64(*length)
                        : reply::FromError("ERR string length out of range"));

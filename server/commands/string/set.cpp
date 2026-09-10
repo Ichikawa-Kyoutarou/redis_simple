@@ -22,6 +22,7 @@ int ParseSetOption(const CommandArgs& args, size_t* idx,
                    StringArgs* string_args);
 bool ExpireAtFromTtl(int64_t ttl, int64_t multiplier, int64_t now,
                      int64_t* expire);
+bool MillisecondsFromSeconds(int64_t seconds, int64_t* milliseconds);
 enum class SetStatus : uint8_t {
   kSet,
   kNotSet,
@@ -127,23 +128,37 @@ int ParseSetOption(const CommandArgs& args, size_t* const idx,
     ++(*idx);
     return 0;
   }
-  const bool expires_in_seconds = utils::EqualsIgnoreCase(option, "EX");
-  const bool expires_in_milliseconds = utils::EqualsIgnoreCase(option, "PX");
-  if (!expires_in_seconds && !expires_in_milliseconds) {
+  const bool relative_seconds = utils::EqualsIgnoreCase(option, "EX");
+  const bool relative_milliseconds = utils::EqualsIgnoreCase(option, "PX");
+  const bool absolute_seconds = utils::EqualsIgnoreCase(option, "EXAT");
+  const bool absolute_milliseconds = utils::EqualsIgnoreCase(option, "PXAT");
+  if (!relative_seconds && !relative_milliseconds && !absolute_seconds &&
+      !absolute_milliseconds) {
     return -1;
   }
   if ((string_args->flags & db::ToInt(db::SetKeyFlag::kKeepTtl)) != 0 ||
       string_args->expire > 0 || *idx + 1 >= args.size()) {
     return -1;
   }
-  int64_t ttl = 0;
-  if (!utils::ToInt64(args[*idx + 1], &ttl) || ttl <= 0) {
+  int64_t expiration = 0;
+  if (!utils::ToInt64(args[*idx + 1], &expiration) || expiration <= 0) {
     return -1;
   }
   constexpr int64_t kMillisecondsPerSecond = 1000;
-  const int64_t multiplier = expires_in_seconds ? kMillisecondsPerSecond : 1;
-  if (!ExpireAtFromTtl(ttl, multiplier, utils::NowInMilliseconds(),
-                       &string_args->expire)) {
+  if (relative_seconds || relative_milliseconds) {
+    const int64_t multiplier = relative_seconds ? kMillisecondsPerSecond : 1;
+    if (!ExpireAtFromTtl(expiration, multiplier, utils::NowInMilliseconds(),
+                         &string_args->expire)) {
+      return -1;
+    }
+  } else if (absolute_seconds) {
+    if (!MillisecondsFromSeconds(expiration, &string_args->expire)) {
+      return -1;
+    }
+  } else {
+    string_args->expire = expiration;
+  }
+  if (string_args->expire <= 0) {
     return -1;
   }
   *idx += 2;
@@ -163,6 +178,16 @@ bool ExpireAtFromTtl(int64_t ttl, int64_t multiplier, int64_t now,
     return false;
   }
   *expire = now + ttl_ms;
+  return true;
+}
+
+bool MillisecondsFromSeconds(int64_t seconds, int64_t* milliseconds) {
+  constexpr int64_t kMillisecondsPerSecond = 1000;
+  if (seconds <= 0 ||
+      seconds > std::numeric_limits<int64_t>::max() / kMillisecondsPerSecond) {
+    return false;
+  }
+  *milliseconds = seconds * kMillisecondsPerSecond;
   return true;
 }
 

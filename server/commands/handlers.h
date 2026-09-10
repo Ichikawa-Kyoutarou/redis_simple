@@ -36,11 +36,14 @@ void HandleInfo(Client* client);
 namespace redis_simple::command::strings {
 void HandleAppend(Client* client);
 void HandleDecr(Client* client);
+void HandleDecrBy(Client* client);
 void HandleGet(Client* client);
 void HandleIncr(Client* client);
+void HandleIncrBy(Client* client);
 void HandleMGet(Client* client);
 void HandleMSet(Client* client);
 void HandleSet(Client* client);
+void HandleStrLen(Client* client);
 }  // namespace redis_simple::command::strings
 
 namespace redis_simple::command::lists {

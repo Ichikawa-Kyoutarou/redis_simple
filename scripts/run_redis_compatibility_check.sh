@@ -63,7 +63,22 @@ actual FLUSHDB >/dev/null
 
 compare SET "key with spaces" "value with spaces"
 compare GET "key with spaces"
+compare STRLEN "key with spaces"
 compare TYPE "key with spaces"
+compare SET conditional_key initial NX
+compare SET conditional_key ignored NX
+compare SET conditional_key updated XX GET
+compare GET conditional_key
+compare SET conditional_missing ignored XX
+future_seconds="$(($(date +%s) + 60))"
+future_milliseconds="$((future_seconds * 1000))"
+compare SET exat_key value EXAT "${future_seconds}"
+compare GET exat_key
+compare SET pxat_key value PXAT "${future_milliseconds}"
+compare GET pxat_key
+compare SET counter_key 10
+compare INCRBY counter_key 5
+compare DECRBY counter_key 3
 compare SET ttl_key value PX 999
 compare TTL ttl_key
 reference_pttl="$(reference PTTL ttl_key)"

@@ -24,13 +24,14 @@ TEST(CommandRegistryTest, FindsCommandsCaseInsensitively) {
 
 TEST(CommandRegistryTest, FindsExpandedRedisCommandSet) {
   const std::array names = {
-      "EXPIRE",  "PEXPIRE", "PEXPIREAT", "TTL",           "PTTL",
-      "PERSIST", "RENAME",  "DBSIZE",    "FLUSHDB",       "INCR",
-      "DECR",    "APPEND",  "MGET",      "MSET",          "LINDEX",
-      "LSET",    "LREM",    "LTRIM",     "SINTER",        "SUNION",
-      "SDIFF",   "ZCOUNT",  "ZREVRANGE", "ZRANGEBYSCORE", "HMGET",
-      "HKEYS",   "HVALS",   "HINCRBY",   "HELLO",         "PING",
-      "ECHO",    "QUIT",    "SCAN",      "BGREWRITEAOF",  "INFO"};
+      "EXPIRE",    "PEXPIRE",       "PEXPIREAT", "TTL",     "PTTL",
+      "PERSIST",   "RENAME",        "DBSIZE",    "FLUSHDB", "INCR",
+      "DECR",      "DECRBY",        "APPEND",    "MGET",    "MSET",
+      "STRLEN",    "INCRBY",        "LINDEX",    "LSET",    "LREM",
+      "LTRIM",     "SINTER",        "SUNION",    "SDIFF",   "ZCOUNT",
+      "ZREVRANGE", "ZRANGEBYSCORE", "HMGET",     "HKEYS",   "HVALS",
+      "HINCRBY",   "HELLO",         "PING",      "ECHO",    "QUIT",
+      "SCAN",      "BGREWRITEAOF",  "INFO"};
   for (const auto* name : names) {
     const auto* command = Find(name);
     ASSERT_NE(command, nullptr) << name;
